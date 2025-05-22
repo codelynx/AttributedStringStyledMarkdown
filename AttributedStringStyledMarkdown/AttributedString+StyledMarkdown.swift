@@ -2,7 +2,17 @@
 //  Created by Frank Rausch on 2021-11-15.
 //
 
+import SwiftUI
+#if canImport(UIKit)
+extension UIFont: @unchecked @retroactive Sendable {}
 import UIKit
+#elseif canImport(AppKit)
+extension NSFont: @unchecked @retroactive Sendable {}
+import AppKit
+#endif
+
+extension NSMutableParagraphStyle: @unchecked Sendable {}
+extension NSParagraphStyle: @unchecked @retroactive Sendable {}
 
 fileprivate enum MarkdownStyledBlock: Equatable {
     case generic
@@ -17,38 +27,58 @@ fileprivate enum MarkdownStyledBlock: Equatable {
 // MARK: -
 
 extension AttributedString {
-
-    init(styledMarkdown markdownString: String, fontSize: CGFloat = UIFont.preferredFont(forTextStyle: .body).pointSize) throws {
-
-        var s = try AttributedString(markdown: markdownString, options: .init(allowsExtendedAttributes: true, interpretedSyntax: .full, failurePolicy: .returnPartiallyParsedIfPossible, languageCode: "en"), baseURL: nil)
-
+    
+    #if canImport(UIKit)
+    typealias XFont = UIFont
+    #elseif canImport(AppKit)
+    typealias XFont = NSFont
+    #endif
+    
+    init(styledMarkdown markdownString: String, fontSize: CGFloat = XFont.preferredFont(forTextStyle: .body).pointSize, baseURL: URL? = nil) throws {
+        
+        XFont.preferredFont(forTextStyle: .body)
+        
+        var s = try AttributedString(markdown: markdownString, options: .init(allowsExtendedAttributes: true, interpretedSyntax: .full, failurePolicy: .returnPartiallyParsedIfPossible), baseURL: baseURL)
+        
         // Looking at the AttributedString’s raw structure helps with understanding the following code.
         print(s)
-
+        
         // Set base font and paragraph style for the whole string
         s.font = .systemFont(ofSize: fontSize)
         s.paragraphStyle = defaultParagraphStyle
-
+        
         // Will respect dark mode automatically
-        s.foregroundColor = .label
+        #if canImport(UIKit)
+        s.foregroundColor = Color(UIColor.label)
+        #elseif canImport(AppKit)
+        s.foregroundColor = Color(NSColor.labelColor)
+        #endif
 
         // MARK: Inline Intents
         let inlineIntents: [InlinePresentationIntent] = [.emphasized, .stronglyEmphasized, .code, .strikethrough, .softBreak, .lineBreak, .inlineHTML, .blockHTML]
-
+        
         for inlineIntent in inlineIntents {
-
+            
             var sourceAttributeContainer = AttributeContainer()
             sourceAttributeContainer.inlinePresentationIntent = inlineIntent
-
+            
             var targetAttributeContainer = AttributeContainer()
             switch inlineIntent {
             case .emphasized:
-                targetAttributeContainer.font = .italicSystemFont(ofSize: fontSize)
+                #if canImport(UIKit)
+                targetAttributeContainer.font = UIFont.italicSystemFont(ofSize: fontSize)
+                #elseif canImport(AppKit)
+                targetAttributeContainer.font = NSFontManager.shared.convert(NSFont.systemFont(ofSize: fontSize), toHaveTrait: .italicFontMask)
+                #endif
             case .stronglyEmphasized:
                 targetAttributeContainer.font = .systemFont(ofSize: fontSize, weight: .bold)
             case .code:
                 targetAttributeContainer.font = .monospacedSystemFont(ofSize: fontSize, weight: .regular)
+                #if os(iOS)
                 targetAttributeContainer.backgroundColor = .secondarySystemBackground
+                #else
+                targetAttributeContainer.backgroundColor = Color.secondary.opacity(0.1)
+                #endif
             case .strikethrough:
                 targetAttributeContainer.strikethroughStyle = .single
             case .softBreak:
@@ -145,7 +175,11 @@ extension AttributedString {
                 s[intentRange].paragraphStyle = previousListID == currentListID ? listParagraphStyle : lastElementListParagraphStyle
             case .blockquote:
                 s[intentRange].paragraphStyle = defaultParagraphStyle
-                s[intentRange].foregroundColor = .secondaryLabel
+                #if canImport(UIKit)
+                s[intentRange].foregroundColor = Color(UIColor.secondaryLabel)
+                #elseif canImport(AppKit)
+                s[intentRange].foregroundColor = Color(NSColor.secondaryLabelColor)
+                #endif
             case .code:
                 s[intentRange].font = .monospacedSystemFont(ofSize: 13, weight: .regular)
                 s[intentRange].paragraphStyle = codeParagraphStyle
